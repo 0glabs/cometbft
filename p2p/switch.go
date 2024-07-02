@@ -684,11 +684,25 @@ func (sw *Switch) acceptRoutine() {
 					sw.addrBook.AddOurAddress(&addr)
 				}
 
-				sw.Logger.Info(
-					"Inbound Peer rejected",
-					"err", err,
-					"numPeers", sw.peers.Size(),
-				)
+				if err.IsIncompatible() {
+					sw.Logger.Error(
+						"Chain id of inbound peer is inconsistent",
+						"err", err.Error(),
+						"numPeers", sw.peers.Size(),
+					)
+				} else if err.IsNodeInfoInvalid() {
+					sw.Logger.Error(
+						"Inbound Peer with invalid node info",
+						"err", err.Error(),
+						"numPeers", sw.peers.Size(),
+					)
+				} else {
+					sw.Logger.Info(
+						"Inbound Peer rejected",
+						"err", err,
+						"numPeers", sw.peers.Size(),
+					)
+				}
 
 				continue
 			case ErrFilterTimeout:
@@ -780,6 +794,7 @@ func (sw *Switch) addOutboundPeerWithConfig(
 	})
 	if err != nil {
 		if e, ok := err.(ErrRejected); ok {
+			sw.Logger.Error("Dialing peer rejected", "address", addr, "err", err)
 			if e.IsSelf() {
 				// Remove the given address from the address book and add to our addresses
 				// to avoid dialing in the future.
@@ -795,7 +810,6 @@ func (sw *Switch) addOutboundPeerWithConfig(
 		if sw.IsPeerPersistent(addr) {
 			go sw.reconnectToPeer(addr)
 		}
-
 		return err
 	}
 
