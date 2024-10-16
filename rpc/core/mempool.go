@@ -161,6 +161,17 @@ func UnconfirmedTxs(ctx *rpctypes.Context, limitPtr *int) (*ctypes.ResultUnconfi
 	}, nil
 }
 
+// AllUnconfirmedTxs gets all unconfirmed transactions.
+func AllUnconfirmedTxs(ctx *rpctypes.Context) (*ctypes.ResultUnconfirmedTxs, error) {
+	txs := env.Mempool.ReapMaxTxs(-1)
+	return &ctypes.ResultUnconfirmedTxs{
+		Count:      len(txs),
+		Total:      env.Mempool.Size(),
+		TotalBytes: env.Mempool.SizeBytes(),
+		Txs:        txs,
+	}, nil
+}
+
 // NumUnconfirmedTxs gets number of unconfirmed transactions.
 // More: https://docs.cometbft.com/v0.37/rpc/#/Info/num_unconfirmed_txs
 func NumUnconfirmedTxs(ctx *rpctypes.Context) (*ctypes.ResultUnconfirmedTxs, error) {

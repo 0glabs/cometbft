@@ -103,6 +103,10 @@ func (c *Local) UnconfirmedTxs(ctx context.Context, limit *int) (*ctypes.ResultU
 	return core.UnconfirmedTxs(c.ctx, limit)
 }
 
+func (c *Local) AllUnconfirmedTxs(ctx context.Context) (*ctypes.ResultUnconfirmedTxs, error) {
+	return core.AllUnconfirmedTxs(c.ctx)
+}
+
 func (c *Local) NumUnconfirmedTxs(ctx context.Context) (*ctypes.ResultUnconfirmedTxs, error) {
 	return core.NumUnconfirmedTxs(c.ctx)
 }
