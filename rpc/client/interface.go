@@ -139,6 +139,12 @@ type MempoolClient interface {
 	CheckTx(context.Context, types.Tx) (*ctypes.ResultCheckTx, error)
 }
 
+// LocalMempoolClient shows us data about current mempool state.
+type LocalMempoolClient interface {
+	MempoolClient
+	AllUnconfirmedTxs(ctx context.Context) (*ctypes.ResultUnconfirmedTxs, error)
+}
+
 // EvidenceClient is used for submitting an evidence of the malicious
 // behavior.
 type EvidenceClient interface {
