@@ -367,6 +367,24 @@ func (txmp *TxMempool) ReapMaxTxs(max int) types.Txs {
 	return keep
 }
 
+// CountSenderTx returns the number of transactions sent by the given sender.
+// If txSenderDecoder is not nil, it is used to extract the sender from the
+// transaction.
+func (txmp *TxMempool) CountSenderTx(senderAddr string, txSenderDecoder func(types.Tx) string) int {
+	count := 0
+	if txSenderDecoder != nil {
+		for _, w := range txmp.allEntriesSorted() {
+			sender := txSenderDecoder(w.tx)
+
+			if sender == senderAddr {
+				count++
+			}
+		}
+	}
+
+	return count
+}
+
 // Update removes all the given transactions from the mempool and the cache,
 // and updates the current block height. The blockTxs and deliverTxResponses
 // must have the same length with each response corresponding to the tx at the

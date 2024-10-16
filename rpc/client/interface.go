@@ -139,6 +139,12 @@ type MempoolClient interface {
 	CheckTx(context.Context, types.Tx) (*ctypes.ResultCheckTx, error)
 }
 
+// OnlyLocalMempoolClient shows us data about current mempool state.
+type OnlyLocalMempoolClient interface {
+	MempoolClient
+	CountSenderUncomfirmedTx(ctx context.Context, accAddr string, txSenderDecoder func(types.Tx) string) (*ctypes.ResultUnconfirmedTxs, error)
+}
+
 // EvidenceClient is used for submitting an evidence of the malicious
 // behavior.
 type EvidenceClient interface {

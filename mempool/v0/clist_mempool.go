@@ -590,6 +590,27 @@ func (mem *CListMempool) ReapMaxTxs(max int) types.Txs {
 	return txs
 }
 
+// Safe for concurrent use by multiple goroutines.
+func (mem *CListMempool) CountSenderTx(senderAddr string, txSenderDecoder func(types.Tx) string) int {
+	mem.updateMtx.RLock()
+	defer mem.updateMtx.RUnlock()
+
+	count := 0
+	if txSenderDecoder == nil {
+		for e := mem.txs.Front(); e != nil; e = e.Next() {
+			memTx := e.Value.(*mempoolTx)
+
+			sender := txSenderDecoder(memTx.tx)
+
+			if sender == senderAddr {
+				count++
+			}
+		}
+	}
+
+	return count
+}
+
 // Lock() must be help by the caller during execution.
 func (mem *CListMempool) Update(
 	height int64,

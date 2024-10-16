@@ -34,6 +34,9 @@ func (*NopMempool) ReapMaxBytesMaxGas(int64, int64) types.Txs { return nil }
 // ReapMaxTxs always returns nil.
 func (*NopMempool) ReapMaxTxs(int) types.Txs { return nil }
 
+// CountSenderTx alway returns 0.
+func (*NopMempool) CountSenderTx(string, func(types.Tx) string) int { return 0 }
+
 // Lock does nothing.
 func (*NopMempool) Lock() {}
 

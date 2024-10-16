@@ -111,6 +111,10 @@ func (c *Local) CheckTx(ctx context.Context, tx types.Tx) (*ctypes.ResultCheckTx
 	return core.CheckTx(c.ctx, tx)
 }
 
+func (c *Local) CountSenderUncomfirmedTx(ctx context.Context, accAddr string, txSenderDecoder func(types.Tx) string) (*ctypes.ResultUnconfirmedTxs, error) {
+	return core.CountSenderUncomfirmedTx(c.ctx, accAddr, txSenderDecoder)
+}
+
 func (c *Local) NetInfo(ctx context.Context) (*ctypes.ResultNetInfo, error) {
 	return core.NetInfo(c.ctx)
 }

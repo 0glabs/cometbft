@@ -98,6 +98,10 @@ type Mempool interface {
 
 	// SizeBytes returns the total size of all txs in the mempool.
 	SizeBytes() int64
+
+	// CountSenderTx returns the number of transactions in the mempool that match the
+	// given sender address.
+	CountSenderTx(senderAddr string, txSenderDecoder func(types.Tx) string) int
 }
 
 // PreCheckFunc is an optional filter executed before CheckTx and rejects

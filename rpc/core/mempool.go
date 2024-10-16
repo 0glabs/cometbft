@@ -181,3 +181,13 @@ func CheckTx(ctx *rpctypes.Context, tx types.Tx) (*ctypes.ResultCheckTx, error) 
 	}
 	return &ctypes.ResultCheckTx{ResponseCheckTx: *res}, nil
 }
+
+// CountSenderUncomfirmedTx gets number of unconfirmed transactions for a given account address.
+func CountSenderUncomfirmedTx(ctx *rpctypes.Context, accAddr string, txSenderDecoder func(types.Tx) string) (*ctypes.ResultUnconfirmedTxs, error) {
+	count := env.Mempool.CountSenderTx(accAddr, txSenderDecoder)
+	return &ctypes.ResultUnconfirmedTxs{
+		Count:      count,
+		Total:      env.Mempool.Size(),
+		TotalBytes: env.Mempool.SizeBytes(),
+	}, nil
+}
