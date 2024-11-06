@@ -44,7 +44,7 @@ func (*NopMempool) Unlock() {}
 func (*NopMempool) Update(
 	int64,
 	types.Txs,
-	[]*abci.ResponseDeliverTx,
+	[]*abci.ExecTxResult,
 	PreCheckFunc,
 	PostCheckFunc,
 ) error {

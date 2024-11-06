@@ -31,9 +31,9 @@ func (bapi *broadcastAPI) BroadcastTx(ctx context.Context, req *RequestBroadcast
 			Log:  res.CheckTx.Log,
 		},
 		DeliverTx: &abci.ResponseDeliverTx{
-			Code: res.DeliverTx.Code,
-			Data: res.DeliverTx.Data,
-			Log:  res.DeliverTx.Log,
+			Code: res.TxResult.Code,
+			Data: res.TxResult.Data,
+			Log:  res.TxResult.Log,
 		},
 	}, nil
 }

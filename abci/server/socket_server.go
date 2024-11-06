@@ -215,12 +215,6 @@ func (s *SocketServer) handleRequest(req *types.Request, responses chan<- *types
 	case *types.Request_InitChain:
 		res := s.app.InitChain(*r.InitChain)
 		responses <- types.ToResponseInitChain(res)
-	case *types.Request_BeginBlock:
-		res := s.app.BeginBlock(*r.BeginBlock)
-		responses <- types.ToResponseBeginBlock(res)
-	case *types.Request_EndBlock:
-		res := s.app.EndBlock(*r.EndBlock)
-		responses <- types.ToResponseEndBlock(res)
 	case *types.Request_ListSnapshots:
 		res := s.app.ListSnapshots(*r.ListSnapshots)
 		responses <- types.ToResponseListSnapshots(res)

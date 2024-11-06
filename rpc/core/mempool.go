@@ -103,21 +103,21 @@ func BroadcastTxCommit(ctx *rpctypes.Context, tx types.Tx) (*ctypes.ResultBroadc
 		checkTxRes := checkTxResMsg.GetCheckTx()
 		if checkTxRes.Code != abci.CodeTypeOK {
 			return &ctypes.ResultBroadcastTxCommit{
-				CheckTx:   *checkTxRes,
-				DeliverTx: abci.ResponseDeliverTx{},
-				Hash:      tx.Hash(),
+				CheckTx:  *checkTxRes,
+				TxResult: abci.ExecTxResult{},
+				Hash:     tx.Hash(),
 			}, nil
 		}
 
 		// Wait for the tx to be included in a block or timeout.
 		select {
 		case msg := <-deliverTxSub.Out(): // The tx was included in a block.
-			deliverTxRes := msg.Data().(types.EventDataTx)
+			txResultEvent := msg.Data().(types.EventDataTx)
 			return &ctypes.ResultBroadcastTxCommit{
-				CheckTx:   *checkTxRes,
-				DeliverTx: deliverTxRes.Result,
-				Hash:      tx.Hash(),
-				Height:    deliverTxRes.Height,
+				CheckTx:  *checkTxRes,
+				TxResult: txResultEvent.Result,
+				Hash:     tx.Hash(),
+				Height:   txResultEvent.Height,
 			}, nil
 		case <-deliverTxSub.Cancelled():
 			var reason string
@@ -129,17 +129,17 @@ func BroadcastTxCommit(ctx *rpctypes.Context, tx types.Tx) (*ctypes.ResultBroadc
 			err = fmt.Errorf("deliverTxSub was canceled (reason: %s)", reason)
 			env.Logger.Error("Error on broadcastTxCommit", "err", err)
 			return &ctypes.ResultBroadcastTxCommit{
-				CheckTx:   *checkTxRes,
-				DeliverTx: abci.ResponseDeliverTx{},
-				Hash:      tx.Hash(),
+				CheckTx:  *checkTxRes,
+				TxResult: abci.ExecTxResult{},
+				Hash:     tx.Hash(),
 			}, err
 		case <-time.After(env.Config.TimeoutBroadcastTxCommit):
 			err = errors.New("timed out waiting for tx to be included in a block")
 			env.Logger.Error("Error on broadcastTxCommit", "err", err)
 			return &ctypes.ResultBroadcastTxCommit{
-				CheckTx:   *checkTxRes,
-				DeliverTx: abci.ResponseDeliverTx{},
-				Hash:      tx.Hash(),
+				CheckTx:  *checkTxRes,
+				TxResult: abci.ExecTxResult{},
+				Hash:     tx.Hash(),
 			}, err
 		}
 	}

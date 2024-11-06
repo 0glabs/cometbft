@@ -29,15 +29,6 @@ func RandVals(cnt int) []types.ValidatorUpdate {
 	return res
 }
 
-// InitKVStore initializes the kvstore app with some data,
-// which allows tests to pass and is fine as long as you
-// don't make any tx that modify the validator state
-func InitKVStore(app *PersistentKVStoreApplication) {
-	app.InitChain(types.RequestInitChain{
-		Validators: RandVals(1),
-	})
-}
-
 // Create a new transaction
 func NewTx(key, value string) []byte {
 	return []byte(strings.Join([]string{key, value}, "="))

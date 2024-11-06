@@ -50,13 +50,12 @@ func heightKey(height int64) ([]byte, error) {
 	)
 }
 
-func eventKey(compositeKey, typ, eventValue string, height int64, eventSeq int64) ([]byte, error) {
+func eventKey(compositeKey, eventValue string, height int64, eventSeq int64) ([]byte, error) {
 	return orderedcode.Append(
 		nil,
 		compositeKey,
 		eventValue,
 		height,
-		typ,
 		eventSeq,
 	)
 }

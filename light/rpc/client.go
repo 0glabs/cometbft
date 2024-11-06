@@ -8,9 +8,6 @@ import (
 	"regexp"
 	"time"
 
-	"github.com/cosmos/gogoproto/proto"
-
-	abci "github.com/cometbft/cometbft/abci/types"
 	"github.com/cometbft/cometbft/crypto/merkle"
 	cmtbytes "github.com/cometbft/cometbft/libs/bytes"
 	cmtmath "github.com/cometbft/cometbft/libs/math"
@@ -18,6 +15,7 @@ import (
 	rpcclient "github.com/cometbft/cometbft/rpc/client"
 	ctypes "github.com/cometbft/cometbft/rpc/core/types"
 	rpctypes "github.com/cometbft/cometbft/rpc/jsonrpc/types"
+	"github.com/cometbft/cometbft/state"
 	"github.com/cometbft/cometbft/types"
 )
 
@@ -410,27 +408,8 @@ func (c *Client) BlockResults(ctx context.Context, height *int64) (*ctypes.Resul
 		return nil, err
 	}
 
-	// proto-encode BeginBlock events
-	bbeBytes, err := proto.Marshal(&abci.ResponseBeginBlock{
-		Events: res.BeginBlockEvents,
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	// Build a Merkle tree of proto-encoded DeliverTx results and get a hash.
-	results := types.NewResults(res.TxsResults)
-
-	// proto-encode EndBlock events.
-	ebeBytes, err := proto.Marshal(&abci.ResponseEndBlock{
-		Events: res.EndBlockEvents,
-	})
-	if err != nil {
-		return nil, err
-	}
-
 	// Build a Merkle tree out of the above 3 binary slices.
-	rH := merkle.HashFromByteSlices([][]byte{bbeBytes, results.Hash(), ebeBytes})
+	rH := state.TxResultsHash(res.TxsResults)
 
 	// Verify block results.
 	if !bytes.Equal(rH, trustedBlock.LastResultsHash) {

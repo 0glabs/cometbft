@@ -230,3 +230,9 @@ func ToResponseProcessProposal(res ResponseProcessProposal) *Response {
 		Value: &Response_ProcessProposal{&res},
 	}
 }
+
+func ToRequestFinalizeBlock(req *RequestFinalizeBlock) *Request {
+	return &Request{
+		Value: &Request_FinalizeBlock{req},
+	}
+}

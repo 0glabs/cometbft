@@ -130,28 +130,6 @@ func (app *localClient) InitChainAsync(req types.RequestInitChain) *ReqRes {
 	)
 }
 
-func (app *localClient) BeginBlockAsync(req types.RequestBeginBlock) *ReqRes {
-	app.mtx.Lock()
-	defer app.mtx.Unlock()
-
-	res := app.Application.BeginBlock(req)
-	return app.callback(
-		types.ToRequestBeginBlock(req),
-		types.ToResponseBeginBlock(res),
-	)
-}
-
-func (app *localClient) EndBlockAsync(req types.RequestEndBlock) *ReqRes {
-	app.mtx.Lock()
-	defer app.mtx.Unlock()
-
-	res := app.Application.EndBlock(req)
-	return app.callback(
-		types.ToRequestEndBlock(req),
-		types.ToResponseEndBlock(res),
-	)
-}
-
 func (app *localClient) ListSnapshotsAsync(req types.RequestListSnapshots) *ReqRes {
 	app.mtx.Lock()
 	defer app.mtx.Unlock()
@@ -273,22 +251,6 @@ func (app *localClient) InitChainSync(req types.RequestInitChain) (*types.Respon
 	defer app.mtx.Unlock()
 
 	res := app.Application.InitChain(req)
-	return &res, nil
-}
-
-func (app *localClient) BeginBlockSync(req types.RequestBeginBlock) (*types.ResponseBeginBlock, error) {
-	app.mtx.Lock()
-	defer app.mtx.Unlock()
-
-	res := app.Application.BeginBlock(req)
-	return &res, nil
-}
-
-func (app *localClient) EndBlockSync(req types.RequestEndBlock) (*types.ResponseEndBlock, error) {
-	app.mtx.Lock()
-	defer app.mtx.Unlock()
-
-	res := app.Application.EndBlock(req)
 	return &res, nil
 }
 

@@ -22,16 +22,17 @@ type Application interface {
 	InitChain(RequestInitChain) ResponseInitChain // Initialize blockchain w validators/other info from CometBFT
 	PrepareProposal(RequestPrepareProposal) ResponsePrepareProposal
 	ProcessProposal(RequestProcessProposal) ResponseProcessProposal
-	BeginBlock(RequestBeginBlock) ResponseBeginBlock // Signals the beginning of a block
-	DeliverTx(RequestDeliverTx) ResponseDeliverTx    // Deliver a tx for full processing
-	EndBlock(RequestEndBlock) ResponseEndBlock       // Signals the end of a block, returns changes to the validator set
-	Commit() ResponseCommit                          // Commit the state and return the application Merkle root hash
+	DeliverTx(RequestDeliverTx) ResponseDeliverTx // Deliver a tx for full processing
+	Commit() ResponseCommit                       // Commit the state and return the application Merkle root hash
 
 	// State Sync Connection
 	ListSnapshots(RequestListSnapshots) ResponseListSnapshots                // List available snapshots
 	OfferSnapshot(RequestOfferSnapshot) ResponseOfferSnapshot                // Offer a snapshot to the application
 	LoadSnapshotChunk(RequestLoadSnapshotChunk) ResponseLoadSnapshotChunk    // Load a snapshot chunk
 	ApplySnapshotChunk(RequestApplySnapshotChunk) ResponseApplySnapshotChunk // Apply a shapshot chunk
+
+	// Deliver the decided block with its txs to the Application
+	FinalizeBlock(*RequestFinalizeBlock) (*ResponseFinalizeBlock, error)
 }
 
 //-------------------------------------------------------
@@ -161,16 +162,6 @@ func (app *GRPCApplication) InitChain(ctx context.Context, req *RequestInitChain
 	return &res, nil
 }
 
-func (app *GRPCApplication) BeginBlock(ctx context.Context, req *RequestBeginBlock) (*ResponseBeginBlock, error) {
-	res := app.app.BeginBlock(*req)
-	return &res, nil
-}
-
-func (app *GRPCApplication) EndBlock(ctx context.Context, req *RequestEndBlock) (*ResponseEndBlock, error) {
-	res := app.app.EndBlock(*req)
-	return &res, nil
-}
-
 func (app *GRPCApplication) ListSnapshots(
 	ctx context.Context, req *RequestListSnapshots) (*ResponseListSnapshots, error) {
 	res := app.app.ListSnapshots(*req)
@@ -205,4 +196,15 @@ func (app *GRPCApplication) ProcessProposal(
 	ctx context.Context, req *RequestProcessProposal) (*ResponseProcessProposal, error) {
 	res := app.app.ProcessProposal(*req)
 	return &res, nil
+}
+
+func (BaseApplication) FinalizeBlock(req *RequestFinalizeBlock) (*ResponseFinalizeBlock, error) {
+	txs := make([]*ExecTxResult, len(req.Txs))
+	for i := range req.Txs {
+		txs[i] = &ExecTxResult{Code: CodeTypeOK}
+	}
+	ret := &ResponseFinalizeBlock{
+		TxResults: txs,
+	}
+	return ret, nil
 }

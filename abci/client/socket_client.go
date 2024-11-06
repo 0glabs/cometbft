@@ -430,6 +430,14 @@ func (cli *socketClient) ProcessProposalSync(req types.RequestProcessProposal) (
 	return reqres.Response.GetProcessProposal(), cli.Error()
 }
 
+func (cli *socketClient) FinalizeBlock(req *types.RequestFinalizeBlock) (*types.ResponseFinalizeBlock, error) {
+	reqRes := cli.queueRequest(types.ToRequestFinalizeBlock(req))
+	if err := cli.FlushSync(); err != nil {
+		return nil, err
+	}
+	return reqRes.Response.GetFinalizeBlock(), cli.Error()
+}
+
 //----------------------------------------
 
 func (cli *socketClient) queueRequest(req *types.Request) *ReqRes {
