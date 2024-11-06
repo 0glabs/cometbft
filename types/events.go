@@ -36,6 +36,7 @@ const (
 	EventUnlock           = "Unlock"
 	EventValidBlock       = "ValidBlock"
 	EventVote             = "Vote"
+	EventNewBlockEvents   = "NewBlockEvents"
 )
 
 // ENCODING / DECODING
@@ -62,10 +63,9 @@ func init() {
 // but some (an input to a call tx or a receive) are more exotic
 
 type EventDataNewBlock struct {
-	Block *Block `json:"block"`
-
-	ResultBeginBlock abci.ResponseBeginBlock `json:"result_begin_block"`
-	ResultEndBlock   abci.ResponseEndBlock   `json:"result_end_block"`
+	Block               *Block                     `json:"block"`
+	BlockID             BlockID                    `json:"block_id"`
+	ResultFinalizeBlock abci.ResponseFinalizeBlock `json:"result_finalize_block"`
 }
 
 type EventDataNewBlockHeader struct {
@@ -105,6 +105,12 @@ type EventDataNewRound struct {
 	Step   string `json:"step"`
 
 	Proposer ValidatorInfo `json:"proposer"`
+}
+
+type EventDataNewBlockEvents struct {
+	Height int64        `json:"height"`
+	Events []abci.Event `json:"events"`
+	NumTxs int64        `json:"num_txs,string"` // Number of txs in a block
 }
 
 type EventDataCompleteProposal struct {
@@ -159,6 +165,7 @@ var (
 	EventQueryValidatorSetUpdates = QueryForEvent(EventValidatorSetUpdates)
 	EventQueryValidBlock          = QueryForEvent(EventValidBlock)
 	EventQueryVote                = QueryForEvent(EventVote)
+	EventQueryNewBlockEvents      = QueryForEvent(EventNewBlockEvents)
 )
 
 func EventQueryTxFor(tx Tx) cmtpubsub.Query {
@@ -173,6 +180,7 @@ func QueryForEvent(eventType string) cmtpubsub.Query {
 type BlockEventPublisher interface {
 	PublishEventNewBlock(block EventDataNewBlock) error
 	PublishEventNewBlockHeader(header EventDataNewBlockHeader) error
+	PublishEventNewBlockEvents(events EventDataNewBlockEvents) error
 	PublishEventNewEvidence(evidence EventDataNewEvidence) error
 	PublishEventTx(EventDataTx) error
 	PublishEventValidatorSetUpdates(EventDataValidatorSetUpdates) error

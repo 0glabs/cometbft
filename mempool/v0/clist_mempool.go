@@ -606,7 +606,7 @@ func (mem *CListMempool) ReapMaxTxs(max int) types.Txs {
 func (mem *CListMempool) Update(
 	height int64,
 	txs types.Txs,
-	deliverTxResponses []*abci.ResponseDeliverTx,
+	txResults []*abci.ExecTxResult,
 	preCheck mempool.PreCheckFunc,
 	postCheck mempool.PostCheckFunc,
 ) error {
@@ -622,7 +622,7 @@ func (mem *CListMempool) Update(
 	}
 
 	for i, tx := range txs {
-		if deliverTxResponses[i].Code == abci.CodeTypeOK {
+		if txResults[i].Code == abci.CodeTypeOK {
 			// Add valid committed tx to the cache (if missing).
 			_ = mem.cache.Push(tx)
 		} else if !mem.config.KeepInvalidTxsInCache {

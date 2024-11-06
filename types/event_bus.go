@@ -133,8 +133,7 @@ func (b *EventBus) PublishEventNewBlock(data EventDataNewBlock) error {
 	// no explicit deadline for publishing events
 	ctx := context.Background()
 
-	resultEvents := append(data.ResultBeginBlock.Events, data.ResultEndBlock.Events...)
-	events := b.validateAndStringifyEvents(resultEvents)
+	events := b.validateAndStringifyEvents(data.ResultFinalizeBlock.Events)
 
 	// add predefined new block event
 	events[EventTypeKey] = append(events[EventTypeKey], EventNewBlock)
@@ -152,6 +151,18 @@ func (b *EventBus) PublishEventNewBlockHeader(data EventDataNewBlockHeader) erro
 
 	// add predefined new block header event
 	events[EventTypeKey] = append(events[EventTypeKey], EventNewBlockHeader)
+
+	return b.pubsub.PublishWithEvents(ctx, data, events)
+}
+
+func (b *EventBus) PublishEventNewBlockEvents(data EventDataNewBlockEvents) error {
+	// no explicit deadline for publishing events
+	ctx := context.Background()
+
+	events := b.validateAndStringifyEvents(data.Events)
+
+	// add predefined new block event
+	events[EventTypeKey] = append(events[EventTypeKey], EventNewBlockEvents)
 
 	return b.pubsub.PublishWithEvents(ctx, data, events)
 }
@@ -250,6 +261,10 @@ func (NopEventBus) PublishEventNewBlock(data EventDataNewBlock) error {
 }
 
 func (NopEventBus) PublishEventNewBlockHeader(data EventDataNewBlockHeader) error {
+	return nil
+}
+
+func (NopEventBus) PublishEventNewBlockEvents(EventDataNewBlockEvents) error {
 	return nil
 }
 

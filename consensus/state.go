@@ -1716,6 +1716,7 @@ func (cs *State) finalizeCommit(height int64) {
 		},
 		block,
 	)
+	logger.Info("applied block", "height", block.Height)
 	if err != nil {
 		panic(fmt.Sprintf("failed to apply block; error %v", err))
 	}

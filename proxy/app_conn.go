@@ -21,10 +21,9 @@ type AppConnConsensus interface {
 	InitChainSync(types.RequestInitChain) (*types.ResponseInitChain, error)
 	PrepareProposalSync(types.RequestPrepareProposal) (*types.ResponsePrepareProposal, error)
 	ProcessProposalSync(types.RequestProcessProposal) (*types.ResponseProcessProposal, error)
-	BeginBlockSync(types.RequestBeginBlock) (*types.ResponseBeginBlock, error)
 	DeliverTxAsync(types.RequestDeliverTx) *abcicli.ReqRes
-	EndBlockSync(types.RequestEndBlock) (*types.ResponseEndBlock, error)
 	CommitSync() (*types.ResponseCommit, error)
+	FinalizeBlock(*types.RequestFinalizeBlock) (*types.ResponseFinalizeBlock, error)
 }
 
 type AppConnMempool interface {
@@ -96,24 +95,19 @@ func (app *appConnConsensus) ProcessProposalSync(req types.RequestProcessProposa
 	return app.appConn.ProcessProposalSync(req)
 }
 
-func (app *appConnConsensus) BeginBlockSync(req types.RequestBeginBlock) (*types.ResponseBeginBlock, error) {
-	defer addTimeSample(app.metrics.MethodTimingSeconds.With("method", "begin_block", "type", "sync"))()
-	return app.appConn.BeginBlockSync(req)
-}
-
 func (app *appConnConsensus) DeliverTxAsync(req types.RequestDeliverTx) *abcicli.ReqRes {
 	defer addTimeSample(app.metrics.MethodTimingSeconds.With("method", "deliver_tx", "type", "async"))()
 	return app.appConn.DeliverTxAsync(req)
 }
 
-func (app *appConnConsensus) EndBlockSync(req types.RequestEndBlock) (*types.ResponseEndBlock, error) {
-	defer addTimeSample(app.metrics.MethodTimingSeconds.With("method", "end_block", "type", "sync"))()
-	return app.appConn.EndBlockSync(req)
-}
-
 func (app *appConnConsensus) CommitSync() (*types.ResponseCommit, error) {
 	defer addTimeSample(app.metrics.MethodTimingSeconds.With("method", "commit", "type", "sync"))()
 	return app.appConn.CommitSync()
+}
+
+func (app *appConnConsensus) FinalizeBlock(req *types.RequestFinalizeBlock) (*types.ResponseFinalizeBlock, error) {
+	defer addTimeSample(app.metrics.MethodTimingSeconds.With("method", "finalize_block", "type", "sync"))()
+	return app.appConn.FinalizeBlock(req)
 }
 
 //------------------------------------------------

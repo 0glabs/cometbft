@@ -37,6 +37,7 @@ message Request {
     RequestApplySnapshotChunk apply_snapshot_chunk = 15;
     RequestPrepareProposal    prepare_proposal     = 16;
     RequestProcessProposal    process_proposal     = 17;
+    RequestFinalizeBlock       finalize_block        = 20;
   }
   reserved 4;
 }
@@ -149,6 +150,19 @@ message RequestProcessProposal {
   bytes proposer_address = 8;
 }
 
+message RequestFinalizeBlock {
+  repeated bytes       txs                 = 1;
+  CommitInfo           decided_last_commit = 2 [(gogoproto.nullable) = false];
+  repeated Misbehavior misbehavior         = 3 [(gogoproto.nullable) = false];
+  // hash is the merkle root hash of the fields of the decided block.
+  bytes                     hash                 = 4;
+  int64                     height               = 5;
+  google.protobuf.Timestamp time                 = 6 [(gogoproto.nullable) = false, (gogoproto.stdtime) = true];
+  bytes                     next_validators_hash = 7;
+  // proposer_address is the address of the public key of the original proposer of the block.
+  bytes proposer_address = 8;
+}
+
 //----------------------------------------
 // Response types
 
@@ -171,6 +185,7 @@ message Response {
     ResponseApplySnapshotChunk apply_snapshot_chunk = 16;
     ResponsePrepareProposal    prepare_proposal     = 17;
     ResponseProcessProposal    process_proposal     = 18;
+    ResponseFinalizeBlock       finalize_block        = 21;
   }
   reserved 5;
 }
@@ -315,6 +330,22 @@ message ResponseProcessProposal {
   }
 }
 
+message ResponseFinalizeBlock {
+  // set of block events emmitted as part of executing the block
+  repeated Event events = 1
+      [(gogoproto.nullable) = false, (gogoproto.jsontag) = "events,omitempty"];
+  // the result of executing each transaction including the events
+  // the particular transction emitted. This should match the order
+  // of the transactions delivered in the block itself
+  repeated ExecTxResult tx_results = 2;
+  // a list of updates to the validator set. These will reflect the validator set at current height + 2.
+  repeated ValidatorUpdate validator_updates = 3 [(gogoproto.nullable) = false];
+  // updates to the consensus params, if any.
+  tendermint.types.ConsensusParams consensus_param_updates = 4;
+  // app_hash is the hash of the applications' state which is used to confirm that execution of the transactions was deterministic. It is up to the application to decide which algorithm to use.
+  bytes app_hash = 5;
+}
+
 //----------------------------------------
 // Misc.
 
@@ -349,14 +380,29 @@ message EventAttribute {
   bool   index = 3;  // nondeterministic
 }
 
+// ExecTxResult contains results of executing one individual transaction.
+//
+// * Its structure is equivalent to #ResponseDeliverTx which will be deprecated/deleted
+message ExecTxResult {
+  uint32         code       = 1;
+  bytes          data       = 2;
+  string         log        = 3;  // nondeterministic
+  string         info       = 4;  // nondeterministic
+  int64          gas_wanted = 5 [json_name = "gas_wanted"];
+  int64          gas_used   = 6 [json_name = "gas_used"];
+  repeated Event events     = 7
+      [(gogoproto.nullable) = false, (gogoproto.jsontag) = "events,omitempty"];  // nondeterministic
+  string codespace = 8;
+}
+
 // TxResult contains results of executing the transaction.
 //
 // One usage is indexing transaction results.
 message TxResult {
-  int64             height = 1;
-  uint32            index  = 2;
-  bytes             tx     = 3;
-  ResponseDeliverTx result = 4 [(gogoproto.nullable) = false];
+  int64        height = 1;
+  uint32       index  = 2;
+  bytes        tx     = 3;
+  ExecTxResult result = 4 [(gogoproto.nullable) = false];
 }
 
 //----------------------------------------
@@ -431,8 +477,6 @@ service ABCIApplication {
   rpc Query(RequestQuery) returns (ResponseQuery);
   rpc Commit(RequestCommit) returns (ResponseCommit);
   rpc InitChain(RequestInitChain) returns (ResponseInitChain);
-  rpc BeginBlock(RequestBeginBlock) returns (ResponseBeginBlock);
-  rpc EndBlock(RequestEndBlock) returns (ResponseEndBlock);
   rpc ListSnapshots(RequestListSnapshots) returns (ResponseListSnapshots);
   rpc OfferSnapshot(RequestOfferSnapshot) returns (ResponseOfferSnapshot);
   rpc LoadSnapshotChunk(RequestLoadSnapshotChunk)

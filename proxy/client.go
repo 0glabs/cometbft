@@ -75,8 +75,6 @@ func DefaultClientCreator(addr, transport, dbDir string) ClientCreator {
 	switch addr {
 	case "kvstore":
 		return NewLocalClientCreator(kvstore.NewApplication())
-	case "persistent_kvstore":
-		return NewLocalClientCreator(kvstore.NewPersistentKVStoreApplication(dbDir))
 	case "e2e":
 		app, err := e2e.NewApplication(e2e.DefaultConfig(dbDir))
 		if err != nil {

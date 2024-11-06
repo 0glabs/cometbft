@@ -237,24 +237,6 @@ func (cli *grpcClient) InitChainAsync(params types.RequestInitChain) *ReqRes {
 	return cli.finishAsyncCall(req, &types.Response{Value: &types.Response_InitChain{InitChain: res}})
 }
 
-func (cli *grpcClient) BeginBlockAsync(params types.RequestBeginBlock) *ReqRes {
-	req := types.ToRequestBeginBlock(params)
-	res, err := cli.client.BeginBlock(context.Background(), req.GetBeginBlock(), grpc.WaitForReady(true))
-	if err != nil {
-		cli.StopForError(err)
-	}
-	return cli.finishAsyncCall(req, &types.Response{Value: &types.Response_BeginBlock{BeginBlock: res}})
-}
-
-func (cli *grpcClient) EndBlockAsync(params types.RequestEndBlock) *ReqRes {
-	req := types.ToRequestEndBlock(params)
-	res, err := cli.client.EndBlock(context.Background(), req.GetEndBlock(), grpc.WaitForReady(true))
-	if err != nil {
-		cli.StopForError(err)
-	}
-	return cli.finishAsyncCall(req, &types.Response{Value: &types.Response_EndBlock{EndBlock: res}})
-}
-
 func (cli *grpcClient) ListSnapshotsAsync(params types.RequestListSnapshots) *ReqRes {
 	req := types.ToRequestListSnapshots(params)
 	res, err := cli.client.ListSnapshots(context.Background(), req.GetListSnapshots(), grpc.WaitForReady(true))
@@ -391,16 +373,6 @@ func (cli *grpcClient) InitChainSync(params types.RequestInitChain) (*types.Resp
 	return cli.finishSyncCall(reqres).GetInitChain(), cli.Error()
 }
 
-func (cli *grpcClient) BeginBlockSync(params types.RequestBeginBlock) (*types.ResponseBeginBlock, error) {
-	reqres := cli.BeginBlockAsync(params)
-	return cli.finishSyncCall(reqres).GetBeginBlock(), cli.Error()
-}
-
-func (cli *grpcClient) EndBlockSync(params types.RequestEndBlock) (*types.ResponseEndBlock, error) {
-	reqres := cli.EndBlockAsync(params)
-	return cli.finishSyncCall(reqres).GetEndBlock(), cli.Error()
-}
-
 func (cli *grpcClient) ListSnapshotsSync(params types.RequestListSnapshots) (*types.ResponseListSnapshots, error) {
 	reqres := cli.ListSnapshotsAsync(params)
 	return cli.finishSyncCall(reqres).GetListSnapshots(), cli.Error()
@@ -435,4 +407,8 @@ func (cli *grpcClient) PrepareProposalSync(
 func (cli *grpcClient) ProcessProposalSync(params types.RequestProcessProposal) (*types.ResponseProcessProposal, error) {
 	reqres := cli.ProcessProposalAsync(params)
 	return cli.finishSyncCall(reqres).GetProcessProposal(), cli.Error()
+}
+
+func (cli *grpcClient) FinalizeBlock(req *types.RequestFinalizeBlock) (*types.ResponseFinalizeBlock, error) {
+	return cli.FinalizeBlock(types.ToRequestFinalizeBlock(req).GetFinalizeBlock())
 }

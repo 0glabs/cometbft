@@ -56,11 +56,11 @@ func (idx *BlockerIndexer) Has(height int64) (bool, error) {
 // primary key: encode(block.height | height) => encode(height)
 // BeginBlock events: encode(eventType.eventAttr|eventValue|height|begin_block) => encode(height)
 // EndBlock events: encode(eventType.eventAttr|eventValue|height|end_block) => encode(height)
-func (idx *BlockerIndexer) Index(bh types.EventDataNewBlockHeader) error {
+func (idx *BlockerIndexer) Index(bh types.EventDataNewBlockEvents) error {
 	batch := idx.store.NewBatch()
 	defer batch.Close()
 
-	height := bh.Header.Height
+	height := bh.Height
 
 	// 1. index by height
 	key, err := heightKey(height)
@@ -71,14 +71,9 @@ func (idx *BlockerIndexer) Index(bh types.EventDataNewBlockHeader) error {
 		return err
 	}
 
-	// 2. index BeginBlock events
-	if err := idx.indexEvents(batch, bh.ResultBeginBlock.Events, "begin_block", height); err != nil {
-		return fmt.Errorf("failed to index BeginBlock events: %w", err)
-	}
-
-	// 3. index EndBlock events
-	if err := idx.indexEvents(batch, bh.ResultEndBlock.Events, "end_block", height); err != nil {
-		return fmt.Errorf("failed to index EndBlock events: %w", err)
+	// 2. index block events
+	if err := idx.indexEvents(batch, bh.Events, height); err != nil {
+		return fmt.Errorf("failed to index FinalizeBlock events: %w", err)
 	}
 
 	return batch.WriteSync()
@@ -532,7 +527,7 @@ func (idx *BlockerIndexer) match(
 	return filteredHeights, nil
 }
 
-func (idx *BlockerIndexer) indexEvents(batch dbm.Batch, events []abci.Event, typ string, height int64) error {
+func (idx *BlockerIndexer) indexEvents(batch dbm.Batch, events []abci.Event, height int64) error {
 	heightBz := int64ToBytes(height)
 
 	for _, event := range events {
@@ -554,7 +549,7 @@ func (idx *BlockerIndexer) indexEvents(batch dbm.Batch, events []abci.Event, typ
 			}
 
 			if attr.GetIndex() {
-				key, err := eventKey(compositeKey, typ, attr.Value, height, idx.eventSeq)
+				key, err := eventKey(compositeKey, attr.Value, height, idx.eventSeq)
 				if err != nil {
 					return fmt.Errorf("failed to create block index key: %w", err)
 				}

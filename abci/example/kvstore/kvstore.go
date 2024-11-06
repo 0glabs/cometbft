@@ -1,7 +1,6 @@
 package kvstore
 
 import (
-	"bytes"
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
@@ -91,50 +90,6 @@ func (app *Application) Info(req types.RequestInfo) (resInfo types.ResponseInfo)
 		LastBlockHeight:  app.state.Height,
 		LastBlockAppHash: app.state.AppHash,
 	}
-}
-
-// tx is either "key=value" or just arbitrary bytes
-func (app *Application) DeliverTx(req types.RequestDeliverTx) types.ResponseDeliverTx {
-	if isReplacedTx(req.Tx) {
-		app.txToRemove[string(req.Tx)] = struct{}{}
-	}
-	var key, value string
-
-	parts := bytes.Split(req.Tx, []byte("="))
-	if len(parts) == 2 {
-		key, value = string(parts[0]), string(parts[1])
-	} else {
-		key, value = string(req.Tx), string(req.Tx)
-	}
-
-	err := app.state.db.Set(prefixKey([]byte(key)), []byte(value))
-	if err != nil {
-		panic(err)
-	}
-	app.state.Size++
-
-	events := []types.Event{
-		{
-			Type: "app",
-			Attributes: []types.EventAttribute{
-				{Key: "creator", Value: "Cosmoshi Netowoko", Index: true},
-				{Key: "key", Value: key, Index: true},
-				{Key: "index_key", Value: "index is working", Index: true},
-				{Key: "noindex_key", Value: "index is working", Index: false},
-			},
-		},
-		{
-			Type: "app",
-			Attributes: []types.EventAttribute{
-				{Key: "creator", Value: "Cosmoshi", Index: true},
-				{Key: "key", Value: value, Index: true},
-				{Key: "index_key", Value: "index is working", Index: true},
-				{Key: "noindex_key", Value: "index is working", Index: false},
-			},
-		},
-	}
-
-	return types.ResponseDeliverTx{Code: code.CodeTypeOK, Events: events}
 }
 
 func (app *Application) CheckTx(req types.RequestCheckTx) types.ResponseCheckTx {

@@ -1,7 +1,6 @@
 package state
 
 import (
-	"errors"
 	"fmt"
 	"time"
 
@@ -10,7 +9,6 @@ import (
 	"github.com/cometbft/cometbft/libs/fail"
 	"github.com/cometbft/cometbft/libs/log"
 	"github.com/cometbft/cometbft/mempool"
-	cmtstate "github.com/cometbft/cometbft/proto/tendermint/state"
 	"github.com/cometbft/cometbft/proxy"
 	"github.com/cometbft/cometbft/types"
 )
@@ -205,9 +203,17 @@ func (blockExec *BlockExecutor) ApplyBlock(
 
 func (blockExec *BlockExecutor) applyBlock(state State, blockID types.BlockID, block *types.Block) (State, int64, error) {
 	startTime := time.Now().UnixNano()
-	abciResponses, err := execBlockOnProxyApp(
-		blockExec.logger, blockExec.proxyApp, block, blockExec.store, state.InitialHeight,
-	)
+	abciResponses, err := blockExec.proxyApp.FinalizeBlock(&abci.RequestFinalizeBlock{
+		Hash:               block.Hash(),
+		NextValidatorsHash: block.NextValidatorsHash,
+		ProposerAddress:    block.ProposerAddress,
+		Height:             block.Height,
+		Time:               block.Time,
+		DecidedLastCommit:  buildLastCommitInfoFromStore(block, blockExec.store, state.InitialHeight),
+		Misbehavior:        block.Evidence.Evidence.ToABCI(),
+		Txs:                block.Txs.ToSliceOfBytes(),
+	})
+	blockExec.logger.Info("finalized block", "height", block.Height, "num_txs", len(block.Txs))
 	endTime := time.Now().UnixNano()
 	blockExec.metrics.BlockProcessingTime.Observe(float64(endTime-startTime) / 1000000)
 	if err != nil {
@@ -217,20 +223,19 @@ func (blockExec *BlockExecutor) applyBlock(state State, blockID types.BlockID, b
 	fail.Fail() // XXX
 
 	// Save the results before we commit.
-	if err := blockExec.store.SaveABCIResponses(block.Height, abciResponses); err != nil {
+	if err := blockExec.store.SaveFinalizeBlockResponse(block.Height, abciResponses); err != nil {
 		return state, 0, err
 	}
 
 	fail.Fail() // XXX
 
 	// validate the validator updates and convert to CometBFT types
-	abciValUpdates := abciResponses.EndBlock.ValidatorUpdates
-	err = validateValidatorUpdates(abciValUpdates, state.ConsensusParams.Validator)
+	err = validateValidatorUpdates(abciResponses.ValidatorUpdates, state.ConsensusParams.Validator)
 	if err != nil {
 		return state, 0, fmt.Errorf("error in validator updates: %v", err)
 	}
 
-	validatorUpdates, err := types.PB2TM.ValidatorUpdates(abciValUpdates)
+	validatorUpdates, err := types.PB2TM.ValidatorUpdates(abciResponses.ValidatorUpdates)
 	if err != nil {
 		return state, 0, err
 	}
@@ -238,7 +243,7 @@ func (blockExec *BlockExecutor) applyBlock(state State, blockID types.BlockID, b
 		blockExec.logger.Info("updates to validators", "updates", types.ValidatorListString(validatorUpdates))
 		blockExec.metrics.ValidatorSetUpdates.Add(1)
 	}
-	if abciResponses.EndBlock.ConsensusParamUpdates != nil {
+	if abciResponses.ConsensusParamUpdates != nil {
 		blockExec.metrics.ConsensusParamUpdates.Add(1)
 	}
 
@@ -249,7 +254,7 @@ func (blockExec *BlockExecutor) applyBlock(state State, blockID types.BlockID, b
 	}
 
 	// Lock mempool, commit app state, update mempoool.
-	appHash, retainHeight, err := blockExec.Commit(state, block, abciResponses.DeliverTxs)
+	appHash, retainHeight, err := blockExec.Commit(state, block, abciResponses)
 	if err != nil {
 		return state, 0, fmt.Errorf("commit failed for application: %v", err)
 	}
@@ -269,7 +274,7 @@ func (blockExec *BlockExecutor) applyBlock(state State, blockID types.BlockID, b
 
 	// Events are fired after everything else.
 	// NOTE: if we crash between Commit and Save, events wont be fired during replay
-	fireEvents(blockExec.logger, blockExec.eventBus, block, abciResponses, validatorUpdates)
+	fireEvents(blockExec.logger, blockExec.eventBus, block, blockID, abciResponses, validatorUpdates)
 
 	return state, retainHeight, nil
 }
@@ -283,7 +288,7 @@ func (blockExec *BlockExecutor) applyBlock(state State, blockID types.BlockID, b
 func (blockExec *BlockExecutor) Commit(
 	state State,
 	block *types.Block,
-	deliverTxResponses []*abci.ResponseDeliverTx,
+	abciResponse *abci.ResponseFinalizeBlock,
 ) ([]byte, int64, error) {
 	blockExec.mempool.Lock()
 	defer blockExec.mempool.Unlock()
@@ -315,10 +320,12 @@ func (blockExec *BlockExecutor) Commit(
 	err = blockExec.mempool.Update(
 		block.Height,
 		block.Txs,
-		deliverTxResponses,
+		abciResponse.TxResults,
 		TxPreCheck(state),
 		TxPostCheck(state),
 	)
+
+	blockExec.logger.Info("mempool updated", "height", block.Height, "err", err)
 
 	return res.Data, res.RetainHeight, err
 }
@@ -326,79 +333,58 @@ func (blockExec *BlockExecutor) Commit(
 //---------------------------------------------------------
 // Helper functions for executing blocks and updating state
 
-// Executes block's transactions on proxyAppConn.
-// Returns a list of transaction results and updates to the validator set
-func execBlockOnProxyApp(
-	logger log.Logger,
-	proxyAppConn proxy.AppConnConsensus,
-	block *types.Block,
-	store Store,
-	initialHeight int64,
-) (*cmtstate.ABCIResponses, error) {
-	var validTxs, invalidTxs = 0, 0
-
-	txIndex := 0
-	abciResponses := new(cmtstate.ABCIResponses)
-	dtxs := make([]*abci.ResponseDeliverTx, len(block.Txs))
-	abciResponses.DeliverTxs = dtxs
-
-	// Execute transactions and get hash.
-	proxyCb := func(req *abci.Request, res *abci.Response) {
-		if r, ok := res.Value.(*abci.Response_DeliverTx); ok {
-			// TODO: make use of res.Log
-			// TODO: make use of this info
-			// Blocks may include invalid txs.
-			txRes := r.DeliverTx
-			if txRes.Code == abci.CodeTypeOK {
-				validTxs++
-			} else {
-				logger.Debug("invalid tx", "code", txRes.Code, "log", txRes.Log)
-				invalidTxs++
-			}
-
-			abciResponses.DeliverTxs[txIndex] = txRes
-			txIndex++
-		}
-	}
-	proxyAppConn.SetResponseCallback(proxyCb)
-
-	commitInfo := buildLastCommitInfo(block, store, initialHeight)
-
-	// Begin block
-	var err error
-	pbh := block.Header.ToProto()
-	if pbh == nil {
-		return nil, errors.New("nil header")
+func buildLastCommitInfoFromStore(block *types.Block, store Store, initialHeight int64) abci.CommitInfo {
+	if block.Height == initialHeight { // check for initial height before loading validators
+		// there is no last commit for the initial height.
+		// return an empty value.
+		return abci.CommitInfo{}
 	}
 
-	abciResponses.BeginBlock, err = proxyAppConn.BeginBlockSync(abci.RequestBeginBlock{
-		Hash:                block.Hash(),
-		Header:              *pbh,
-		LastCommitInfo:      commitInfo,
-		ByzantineValidators: block.Evidence.Evidence.ToABCI(),
-	})
+	lastValSet, err := store.LoadValidators(block.Height - 1)
 	if err != nil {
-		logger.Error("error in proxyAppConn.BeginBlock", "err", err)
-		return nil, err
+		panic(fmt.Errorf("failed to load validator set at height %d: %w", block.Height-1, err))
 	}
 
-	// run txs of block
-	for _, tx := range block.Txs {
-		proxyAppConn.DeliverTxAsync(abci.RequestDeliverTx{Tx: tx})
-		if err := proxyAppConn.Error(); err != nil {
-			return nil, err
+	return BuildLastCommitInfo(block, lastValSet, initialHeight)
+}
+
+// BuildLastCommitInfo builds a CommitInfo from the given block and validator set.
+// If you want to load the validator set from the store instead of providing it,
+// use buildLastCommitInfoFromStore.
+func BuildLastCommitInfo(block *types.Block, lastValSet *types.ValidatorSet, initialHeight int64) abci.CommitInfo {
+	if block.Height == initialHeight {
+		// there is no last commit for the initial height.
+		// return an empty value.
+		return abci.CommitInfo{}
+	}
+
+	var (
+		commitSize = block.LastCommit.Size()
+		valSetLen  = len(lastValSet.Validators)
+	)
+
+	// ensure that the size of the validator set in the last commit matches
+	// the size of the validator set in the state store.
+	if commitSize != valSetLen {
+		panic(fmt.Sprintf(
+			"commit size (%d) doesn't match validator set length (%d) at height %d\n\n%v\n\n%v",
+			commitSize, valSetLen, block.Height, block.LastCommit.Signatures, lastValSet.Validators,
+		))
+	}
+
+	votes := make([]abci.VoteInfo, block.LastCommit.Size())
+	for i, val := range lastValSet.Validators {
+		commitSig := block.LastCommit.Signatures[i]
+		votes[i] = abci.VoteInfo{
+			Validator:       types.TM2PB.Validator(val),
+			SignedLastBlock: commitSig.BlockIDFlag != types.BlockIDFlagAbsent,
 		}
 	}
 
-	// End block.
-	abciResponses.EndBlock, err = proxyAppConn.EndBlockSync(abci.RequestEndBlock{Height: block.Height})
-	if err != nil {
-		logger.Error("error in proxyAppConn.EndBlock", "err", err)
-		return nil, err
+	return abci.CommitInfo{
+		Round: block.LastCommit.Round,
+		Votes: votes,
 	}
-
-	logger.Info("executed block", "height", block.Height, "num_valid_txs", validTxs, "num_invalid_txs", invalidTxs)
-	return abciResponses, nil
 }
 
 func buildLastCommitInfo(block *types.Block, store Store, initialHeight int64) abci.CommitInfo {
@@ -485,12 +471,20 @@ func validateValidatorUpdates(abciUpdates []abci.ValidatorUpdate,
 	return nil
 }
 
+// TxResultsHash returns the root hash of a Merkle tree of
+// ExecTxResulst responses (see ABCIResults.Hash)
+//
+// See merkle.SimpleHashFromByteSlices
+func TxResultsHash(txResults []*abci.ExecTxResult) []byte {
+	return types.NewResults(txResults).Hash()
+}
+
 // updateState returns a new State updated according to the header and responses.
 func updateState(
 	state State,
 	blockID types.BlockID,
 	header *types.Header,
-	abciResponses *cmtstate.ABCIResponses,
+	abciResponses *abci.ResponseFinalizeBlock,
 	validatorUpdates []*types.Validator,
 ) (State, error) {
 
@@ -515,9 +509,9 @@ func updateState(
 	// Update the params with the latest abciResponses.
 	nextParams := state.ConsensusParams
 	lastHeightParamsChanged := state.LastHeightConsensusParamsChanged
-	if abciResponses.EndBlock.ConsensusParamUpdates != nil {
+	if abciResponses.ConsensusParamUpdates != nil {
 		// NOTE: must not mutate s.ConsensusParams
-		nextParams = state.ConsensusParams.Update(abciResponses.EndBlock.ConsensusParamUpdates)
+		nextParams = state.ConsensusParams.Update(abciResponses.ConsensusParamUpdates)
 		err := nextParams.ValidateBasic()
 		if err != nil {
 			return state, fmt.Errorf("error updating consensus params: %v", err)
@@ -546,7 +540,7 @@ func updateState(
 		LastHeightValidatorsChanged:      lastHeightValsChanged,
 		ConsensusParams:                  nextParams,
 		LastHeightConsensusParamsChanged: lastHeightParamsChanged,
-		LastResultsHash:                  ABCIResponsesResultsHash(abciResponses),
+		LastResultsHash:                  TxResultsHash(abciResponses.TxResults),
 		AppHash:                          nil,
 	}, nil
 }
@@ -558,24 +552,30 @@ func fireEvents(
 	logger log.Logger,
 	eventBus types.BlockEventPublisher,
 	block *types.Block,
-	abciResponses *cmtstate.ABCIResponses,
+	blockID types.BlockID,
+	abciResponses *abci.ResponseFinalizeBlock,
 	validatorUpdates []*types.Validator,
 ) {
 	if err := eventBus.PublishEventNewBlock(types.EventDataNewBlock{
-		Block:            block,
-		ResultBeginBlock: *abciResponses.BeginBlock,
-		ResultEndBlock:   *abciResponses.EndBlock,
+		Block:               block,
+		BlockID:             blockID,
+		ResultFinalizeBlock: *abciResponses,
 	}); err != nil {
 		logger.Error("failed publishing new block", "err", err)
 	}
 
 	if err := eventBus.PublishEventNewBlockHeader(types.EventDataNewBlockHeader{
-		Header:           block.Header,
-		NumTxs:           int64(len(block.Txs)),
-		ResultBeginBlock: *abciResponses.BeginBlock,
-		ResultEndBlock:   *abciResponses.EndBlock,
+		Header: block.Header,
 	}); err != nil {
 		logger.Error("failed publishing new block header", "err", err)
+	}
+
+	if err := eventBus.PublishEventNewBlockEvents(types.EventDataNewBlockEvents{
+		Height: block.Height,
+		Events: abciResponses.Events,
+		NumTxs: int64(len(block.Txs)),
+	}); err != nil {
+		logger.Error("failed publishing new block events", "err", err)
 	}
 
 	if len(block.Evidence.Evidence) != 0 {
@@ -594,7 +594,7 @@ func fireEvents(
 			Height: block.Height,
 			Index:  uint32(i),
 			Tx:     tx,
-			Result: *(abciResponses.DeliverTxs[i]),
+			Result: *(abciResponses.TxResults[i]),
 		}}); err != nil {
 			logger.Error("failed publishing event TX", "err", err)
 		}
@@ -620,19 +620,35 @@ func ExecCommitBlock(
 	store Store,
 	initialHeight int64,
 ) ([]byte, error) {
-	_, err := execBlockOnProxyApp(logger, appConnConsensus, block, store, initialHeight)
+	commitInfo := buildLastCommitInfoFromStore(block, store, initialHeight)
+
+	resp, err := appConnConsensus.FinalizeBlock(&abci.RequestFinalizeBlock{
+		Hash:               block.Hash(),
+		NextValidatorsHash: block.NextValidatorsHash,
+		ProposerAddress:    block.ProposerAddress,
+		Height:             block.Height,
+		Time:               block.Time,
+		DecidedLastCommit:  commitInfo,
+		Misbehavior:        block.Evidence.Evidence.ToABCI(),
+		Txs:                block.Txs.ToSliceOfBytes(),
+	})
 	if err != nil {
-		logger.Error("failed executing block on proxy app", "height", block.Height, "err", err)
+		logger.Error("error in proxyAppConn.FinalizeBlock", "err", err)
 		return nil, err
 	}
 
-	// Commit block, get hash back
-	res, err := appConnConsensus.CommitSync()
+	// Assert that the application correctly returned tx results for each of the transactions provided in the block
+	if len(block.Data.Txs) != len(resp.TxResults) {
+		return nil, fmt.Errorf("expected tx results length to match size of transactions in block. Expected %d, got %d", len(block.Data.Txs), len(resp.TxResults))
+	}
+
+	// Commit block
+	_, err = appConnConsensus.CommitSync()
 	if err != nil {
-		logger.Error("client error during proxyAppConn.CommitSync", "err", res)
+		logger.Error("client error during proxyAppConn.Commit", "err", err)
 		return nil, err
 	}
 
-	// ResponseCommit has no error or log, just data
-	return res.Data, nil
+	// ResponseCommit has no error or log
+	return resp.AppHash, nil
 }
