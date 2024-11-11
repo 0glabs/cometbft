@@ -254,7 +254,7 @@ func (blockExec *BlockExecutor) applyBlock(state State, blockID types.BlockID, b
 	}
 
 	// Lock mempool, commit app state, update mempoool.
-	appHash, retainHeight, err := blockExec.Commit(state, block, abciResponses)
+	retainHeight, err := blockExec.Commit(state, block, abciResponses)
 	if err != nil {
 		return state, 0, fmt.Errorf("commit failed for application: %v", err)
 	}
@@ -265,7 +265,7 @@ func (blockExec *BlockExecutor) applyBlock(state State, blockID types.BlockID, b
 	fail.Fail() // XXX
 
 	// Update the app hash and save the state.
-	state.AppHash = appHash
+	state.AppHash = abciResponses.AppHash
 	if err := blockExec.store.Save(state); err != nil {
 		return state, 0, err
 	}
@@ -289,7 +289,7 @@ func (blockExec *BlockExecutor) Commit(
 	state State,
 	block *types.Block,
 	abciResponse *abci.ResponseFinalizeBlock,
-) ([]byte, int64, error) {
+) (int64, error) {
 	blockExec.mempool.Lock()
 	defer blockExec.mempool.Unlock()
 
@@ -298,14 +298,14 @@ func (blockExec *BlockExecutor) Commit(
 	err := blockExec.mempool.FlushAppConn()
 	if err != nil {
 		blockExec.logger.Error("client error during mempool.FlushAppConn", "err", err)
-		return nil, 0, err
+		return 0, err
 	}
 
 	// Commit block, get hash back
 	res, err := blockExec.proxyApp.CommitSync()
 	if err != nil {
 		blockExec.logger.Error("client error during proxyAppConn.CommitSync", "err", err)
-		return nil, 0, err
+		return 0, err
 	}
 
 	// ResponseCommit has no error code - just data
@@ -313,7 +313,7 @@ func (blockExec *BlockExecutor) Commit(
 		"committed state",
 		"height", block.Height,
 		"num_txs", len(block.Txs),
-		"app_hash", fmt.Sprintf("%X", res.Data),
+		"block_app_hash", fmt.Sprintf("%X", block.AppHash),
 	)
 
 	// Update mempool.
@@ -327,7 +327,7 @@ func (blockExec *BlockExecutor) Commit(
 
 	blockExec.logger.Info("mempool updated", "height", block.Height, "err", err)
 
-	return res.Data, res.RetainHeight, err
+	return res.RetainHeight, err
 }
 
 //---------------------------------------------------------
