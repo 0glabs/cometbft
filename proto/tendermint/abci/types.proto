@@ -236,6 +236,13 @@ message ResponseCheckTx {
   // mempool_error is set by CometBFT.
   // ABCI applictions creating a ResponseCheckTX should not set mempool_error.
   string mempool_error = 11;
+
+  // tx info
+  string signer_address = 20;
+  uint64 nonce          = 21;
+  uint64 gas_limit      = 22;
+  uint64 gas_price      = 23;
+  int32  type           = 24;  
 }
 
 message ResponseDeliverTx {
