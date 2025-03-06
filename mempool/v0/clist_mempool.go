@@ -5,6 +5,7 @@ import (
 	"errors"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	abci "github.com/cometbft/cometbft/abci/types"
 	"github.com/cometbft/cometbft/config"
@@ -221,9 +222,10 @@ func (mem *CListMempool) CheckTx(
 
 	txSize := len(tx)
 
-	if err := mem.isFull(txSize); err != nil {
-		return err
-	}
+	// check mempool size when handling checkTx response in resCbFirstTime
+	// if err := mem.isFull(txSize); err != nil {
+	// 	return err
+	// }
 
 	if txSize > mem.config.MaxTxBytes {
 		return mempool.ErrTxTooLarge{
@@ -394,10 +396,22 @@ func (mem *CListMempool) resCbFirstTime(
 			// Check mempool isn't full again to reduce the chance of exceeding the
 			// limits.
 			if err := mem.isFull(len(tx)); err != nil {
-				// remove from cache (mempool might have a space later)
-				mem.cache.Remove(tx)
-				mem.logger.Error(err.Error())
-				return
+				if len(r.CheckTx.ReplaceableTx) > 0 {
+					replaceableTx := types.Tx(r.CheckTx.ReplaceableTx)
+					if e, ok := mem.txsMap.Load(replaceableTx.Key()); ok {
+						mem.removeTx(replaceableTx, e.(*clist.CElement), true)
+					} else {
+						// remove from cache (mempool might have a space later)
+						mem.cache.Remove(tx)
+						mem.logger.Error(err.Error())
+						return
+					}
+				} else {
+					// remove from cache (mempool might have a space later)
+					mem.cache.Remove(tx)
+					mem.logger.Error(err.Error())
+					return
+				}
 			}
 
 			// Check transaction not already in the mempool
@@ -424,6 +438,7 @@ func (mem *CListMempool) resCbFirstTime(
 				gasPrice:      r.CheckTx.GasPrice,
 				gasLimit:      r.CheckTx.GasLimit,
 				txType:        r.CheckTx.Type,
+				timestamp:     uint64(time.Now().UnixNano()),
 			}
 			memTx.senders.Store(peerID, true)
 			mem.addTx(memTx)
@@ -712,6 +727,7 @@ type mempoolTx struct {
 	txType        int32
 	gasPrice      uint64
 	gasLimit      uint64
+	timestamp     uint64
 }
 
 // Height returns the height for this transaction
