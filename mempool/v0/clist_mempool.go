@@ -418,6 +418,12 @@ func (mem *CListMempool) resCbFirstTime(
 				height:    mem.height,
 				gasWanted: r.CheckTx.GasWanted,
 				tx:        tx,
+
+				signerAddress: r.CheckTx.SignerAddress,
+				nonce:         r.CheckTx.Nonce,
+				gasPrice:      r.CheckTx.GasPrice,
+				gasLimit:      r.CheckTx.GasLimit,
+				txType:        r.CheckTx.Type,
 			}
 			memTx.senders.Store(peerID, true)
 			mem.addTx(memTx)
@@ -699,6 +705,13 @@ type mempoolTx struct {
 	// ids of peers who've sent us this tx (as a map for quick lookups).
 	// senders: PeerID -> bool
 	senders sync.Map
+
+	// additonal data of tx
+	signerAddress string
+	nonce         uint64
+	txType        int32
+	gasPrice      uint64
+	gasLimit      uint64
 }
 
 // Height returns the height for this transaction
