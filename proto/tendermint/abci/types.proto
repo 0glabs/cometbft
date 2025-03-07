@@ -37,6 +37,7 @@ message Request {
     RequestApplySnapshotChunk apply_snapshot_chunk = 15;
     RequestPrepareProposal    prepare_proposal     = 16;
     RequestProcessProposal    process_proposal     = 17;
+    RequestEliminatedTx       eliminated_tx        = 18;
   }
   reserved 4;
 }
@@ -86,6 +87,10 @@ enum CheckTxType {
 message RequestCheckTx {
   bytes       tx   = 1;
   CheckTxType type = 2;
+}
+
+message RequestEliminatedTx {
+  repeated bytes txs = 1;
 }
 
 message RequestDeliverTx {
@@ -171,6 +176,7 @@ message Response {
     ResponseApplySnapshotChunk apply_snapshot_chunk = 16;
     ResponsePrepareProposal    prepare_proposal     = 17;
     ResponseProcessProposal    process_proposal     = 18;
+    ResponseEliminatedTx       eliminated_tx        = 19;
   }
   reserved 5;
 }
@@ -324,6 +330,8 @@ message ResponseProcessProposal {
   }
 }
 
+message ResponseEliminatedTx {}
+
 //----------------------------------------
 // Misc.
 
@@ -450,4 +458,5 @@ service ABCIApplication {
       returns (ResponseApplySnapshotChunk);
   rpc PrepareProposal(RequestPrepareProposal) returns (ResponsePrepareProposal);
   rpc ProcessProposal(RequestProcessProposal) returns (ResponseProcessProposal);
+  rpc EliminatedTx(RequestEliminatedTx) returns (ResponseEliminatedTx);
 }

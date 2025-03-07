@@ -832,6 +832,9 @@ func (mem *CListMempool) recheckTxs() {
 func (mem *CListMempool) cleanUpMarkedRemovedTxs() {
 	mem.removed.lock.Lock()
 	defer mem.removed.lock.Unlock()
+
+	eliminatedTxs := make([][]byte, 0, len(mem.removed.data))
+
 	for i := range mem.removed.data {
 		memTx := mem.removed.data[i]
 
@@ -842,6 +845,8 @@ func (mem *CListMempool) cleanUpMarkedRemovedTxs() {
 			mem.txsMap.Delete(memTx.tx.Key())
 			atomic.AddInt64(&mem.txsBytes, int64(-len(memTx.tx)))
 		}
+
+		eliminatedTxs = append(eliminatedTxs, memTx.tx)
 	}
 
 	for i := range mem.removed.data {
@@ -849,6 +854,10 @@ func (mem *CListMempool) cleanUpMarkedRemovedTxs() {
 	}
 
 	mem.removed.data = nil
+
+	_, _ = mem.proxyAppConn.EliminatedTx(&abci.RequestEliminatedTx{
+		Txs: eliminatedTxs,
+	})
 }
 
 func (mem *CListMempool) markRemovableTxs() {

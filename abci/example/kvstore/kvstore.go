@@ -281,3 +281,7 @@ func (app *Application) ProcessProposal(
 	}
 	return types.ResponseProcessProposal{Status: types.ResponseProcessProposal_ACCEPT}
 }
+
+func (app *Application) EliminatedTx(req *types.RequestEliminatedTx) types.ResponseEliminatedTx {
+	panic("not implement")
+}

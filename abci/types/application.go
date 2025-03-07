@@ -17,6 +17,7 @@ type Application interface {
 
 	// Mempool Connection
 	CheckTx(RequestCheckTx) ResponseCheckTx // Validate a tx for the mempool
+	EliminatedTx(*RequestEliminatedTx) ResponseEliminatedTx
 
 	// Consensus Connection
 	InitChain(RequestInitChain) ResponseInitChain // Initialize blockchain w validators/other info from CometBFT
@@ -56,6 +57,10 @@ func (BaseApplication) DeliverTx(req RequestDeliverTx) ResponseDeliverTx {
 
 func (BaseApplication) CheckTx(req RequestCheckTx) ResponseCheckTx {
 	return ResponseCheckTx{Code: CodeTypeOK}
+}
+
+func (BaseApplication) EliminatedTx(req *RequestEliminatedTx) ResponseEliminatedTx {
+	return ResponseEliminatedTx{}
 }
 
 func (BaseApplication) Commit() ResponseCommit {
@@ -144,6 +149,10 @@ func (app *GRPCApplication) DeliverTx(ctx context.Context, req *RequestDeliverTx
 func (app *GRPCApplication) CheckTx(ctx context.Context, req *RequestCheckTx) (*ResponseCheckTx, error) {
 	res := app.app.CheckTx(*req)
 	return &res, nil
+}
+
+func (app *GRPCApplication) EliminatedTx(ctx context.Context, req *RequestEliminatedTx) (*ResponseEliminatedTx, error) {
+	return &ResponseEliminatedTx{}, nil
 }
 
 func (app *GRPCApplication) Query(ctx context.Context, req *RequestQuery) (*ResponseQuery, error) {

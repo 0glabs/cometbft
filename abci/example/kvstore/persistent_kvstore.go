@@ -360,3 +360,7 @@ func (app *PersistentKVStoreApplication) substPrepareTx(blockData [][]byte, maxT
 	}
 	return txs
 }
+
+func (app *PersistentKVStoreApplication) EliminatedTx(req *types.RequestEliminatedTx) types.ResponseEliminatedTx {
+	panic("not implement")
+}

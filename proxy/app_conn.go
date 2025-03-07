@@ -36,6 +36,8 @@ type AppConnMempool interface {
 
 	FlushAsync() *abcicli.ReqRes
 	FlushSync() error
+
+	EliminatedTx(*types.RequestEliminatedTx) (*types.ResponseEliminatedTx, error)
 }
 
 type AppConnQuery interface {
@@ -157,6 +159,11 @@ func (app *appConnMempool) CheckTxAsync(req types.RequestCheckTx) *abcicli.ReqRe
 func (app *appConnMempool) CheckTxSync(req types.RequestCheckTx) (*types.ResponseCheckTx, error) {
 	defer addTimeSample(app.metrics.MethodTimingSeconds.With("method", "check_tx", "type", "sync"))()
 	return app.appConn.CheckTxSync(req)
+}
+
+func (app *appConnMempool) EliminatedTx(req *types.RequestEliminatedTx) (*types.ResponseEliminatedTx, error) {
+	defer addTimeSample(app.metrics.MethodTimingSeconds.With("method", "eliminated_tx", "type", "sync"))()
+	return app.appConn.EliminatedTx(req)
 }
 
 //------------------------------------------------

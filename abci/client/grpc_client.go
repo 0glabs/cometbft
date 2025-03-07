@@ -310,6 +310,10 @@ func (cli *grpcClient) ProcessProposalAsync(params types.RequestProcessProposal)
 	return cli.finishAsyncCall(req, &types.Response{Value: &types.Response_ProcessProposal{ProcessProposal: res}})
 }
 
+func (cli *grpcClient) EliminatedTx(*types.RequestEliminatedTx) (*types.ResponseEliminatedTx, error) {
+	panic("not implemented")
+}
+
 // finishAsyncCall creates a ReqRes for an async call, and immediately populates it
 // with the response. We don't complete it until it's been ordered via the channel.
 func (cli *grpcClient) finishAsyncCall(req *types.Request, res *types.Response) *ReqRes {

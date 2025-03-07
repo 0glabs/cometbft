@@ -342,6 +342,14 @@ func (app *localClient) ProcessProposalSync(req types.RequestProcessProposal) (*
 	return &res, nil
 }
 
+func (app *localClient) EliminatedTx(req *types.RequestEliminatedTx) (*types.ResponseEliminatedTx, error) {
+	app.mtx.Lock()
+	defer app.mtx.Unlock()
+
+	res := app.Application.EliminatedTx(req)
+	return &res, nil
+}
+
 //-------------------------------------------------------
 
 func (app *localClient) callback(req *types.Request, res *types.Response) *ReqRes {

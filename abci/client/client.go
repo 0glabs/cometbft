@@ -60,6 +60,7 @@ type Client interface {
 	LoadSnapshotChunkSync(types.RequestLoadSnapshotChunk) (*types.ResponseLoadSnapshotChunk, error)
 	ApplySnapshotChunkSync(types.RequestApplySnapshotChunk) (*types.ResponseApplySnapshotChunk, error)
 	ProcessProposalSync(types.RequestProcessProposal) (*types.ResponseProcessProposal, error)
+	EliminatedTx(*types.RequestEliminatedTx) (*types.ResponseEliminatedTx, error)
 }
 
 //----------------------------------------

@@ -430,6 +430,10 @@ func (cli *socketClient) ProcessProposalSync(req types.RequestProcessProposal) (
 	return reqres.Response.GetProcessProposal(), cli.Error()
 }
 
+func (cli *socketClient) EliminatedTx(*types.RequestEliminatedTx) (*types.ResponseEliminatedTx, error) {
+	panic("not implemented")
+}
+
 //----------------------------------------
 
 func (cli *socketClient) queueRequest(req *types.Request) *ReqRes {
