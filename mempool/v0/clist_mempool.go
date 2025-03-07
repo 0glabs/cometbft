@@ -5,12 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"math"
-	"runtime"
 	"sort"
-	"strconv"
-	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	abci "github.com/cometbft/cometbft/abci/types"
 	"github.com/cometbft/cometbft/config"
@@ -24,7 +22,10 @@ import (
 	"github.com/cometbft/cometbft/types"
 )
 
-const pendingQueuePreallocationSize int = 10
+const (
+	pendingQueuePreallocationSize int = 10
+	overflowEliminationRate       int = 3 // in percentage
+)
 
 // CListMempool is an ordered in-memory pool for transactions before they are
 // proposed in a consensus round. Transaction validity is checked using the
@@ -553,7 +554,9 @@ func (mem *CListMempool) tryToAppnedTx(memTx *mempoolTx) error {
 
 	// find and drop, if mempool is full
 	if mem.Size() > mem.config.Size {
+		startAt := time.Now()
 		mem.markRemovableTxs()
+		mem.logger.Info("markRemovableTxs done", "costed", fmt.Sprint(time.Since(startAt).Milliseconds()))
 	}
 
 	if memTx.removed {
@@ -849,9 +852,12 @@ func (mem *CListMempool) cleanUpMarkedRemovedTxs() {
 }
 
 func (mem *CListMempool) markRemovableTxs() {
-	mem.logger.Info(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>", "gid", getGoroutineID(), "pendingSize", mem.pending.Size(), "removedSize", mem.removed.Size())
+	// mem.logger.Info(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>", "gid", getGoroutineID(), "pendingSize", mem.pending.Size(), "removedSize", mem.removed.Size())
 	mem.pending.lock.RLock()
 	defer mem.pending.lock.RUnlock()
+
+	targetCnt := calTargetSize(mem.config.Size)
+	removedCnt := 0
 	totalPendingTxCnt := 0
 	// Simulate the execution order based on reference nonce and gas price
 	cursorGrp := make(map[string]int, len(mem.pending.data))
@@ -889,14 +895,14 @@ func (mem *CListMempool) markRemovableTxs() {
 		if selectedMemTx == nil {
 			break
 		}
-		mem.logger.Info("tx selected", "sender", selectedMemTx.signerAddress, "nonce", selectedMemTx.nonce, "gid", getGoroutineID())
 
-		if cnt >= mem.config.Size {
+		if cnt >= targetCnt {
 			txs := mem.pending.data[selectedMemTx.signerAddress]
 			for i := cursorGrp[selectedMemTx.signerAddress]; i < len(txs); i++ {
 				if !txs[i].removed {
 					mem.removed.Add(txs[i])
-					mem.logger.Info("tx marked removed", "sender", txs[i].signerAddress, "nonce", txs[i].nonce, "gid", getGoroutineID())
+					removedCnt++
+					// mem.logger.Info("tx marked removed", "sender", txs[i].signerAddress, "nonce", txs[i].nonce)
 				}
 				cursorGrp[selectedMemTx.signerAddress]++
 				cnt++
@@ -906,7 +912,8 @@ func (mem *CListMempool) markRemovableTxs() {
 			cnt++
 		}
 	}
-	mem.logger.Info("<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<", "gid", getGoroutineID(), "pendingSize", mem.pending.Size(), "removedSize", mem.removed.Size())
+	mem.logger.Info("markRemovableTxs done", "removedCnt", removedCnt, "totalPendingTxCnt", totalPendingTxCnt, "targetCnt", targetCnt)
+	// mem.logger.Info("<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<", "gid", getGoroutineID(), "pendingSize", mem.pending.Size(), "removedSize", mem.removed.Size())
 }
 
 //--------------------------------------------------------------------------------
@@ -1081,12 +1088,6 @@ func (pp *pendingPool) Flush() {
 	pp.data = nil
 }
 
-func getGoroutineID() int {
-	var buf [64]byte
-	n := runtime.Stack(buf[:], false)
-	stack := string(buf[:n])
-
-	idField := strings.Fields(strings.TrimPrefix(stack, "goroutine "))[0]
-	id, _ := strconv.Atoi(idField)
-	return id
+func calTargetSize(mempoolSize int) int {
+	return mempoolSize * (100 - overflowEliminationRate) / 100
 }
