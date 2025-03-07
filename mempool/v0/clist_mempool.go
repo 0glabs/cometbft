@@ -192,6 +192,9 @@ func (mem *CListMempool) Flush() {
 		mem.txsMap.Delete(key)
 		return true
 	})
+
+	mem.removed.Flush()
+	mem.pending.Flush()
 }
 
 // TxsFront returns the first transaction in the ordered list for peer
@@ -232,17 +235,44 @@ func (mem *CListMempool) CheckTx(
 
 	txSize := len(tx)
 
-	// check mempool size when handling checkTx response in resCbFirstTime
-	// if err := mem.isFull(txSize); err != nil {
-	// 	return err
-	// }
-
 	if txSize > mem.config.MaxTxBytes {
 		return mempool.ErrTxTooLarge{
 			Max:    mem.config.MaxTxBytes,
 			Actual: txSize,
 		}
 	}
+
+	memSize := mem.Size()
+	txsBytes := mem.SizeBytes()
+	recheckFull := mem.recheckFull.Load()
+
+	if recheckFull {
+		return mempool.ErrMempoolIsFull{
+			NumTxs:      memSize,
+			MaxTxs:      mem.config.Size,
+			TxsBytes:    txsBytes,
+			MaxTxsBytes: mem.config.MaxTxsBytes,
+		}
+	}
+
+	if int64(txSize)+txsBytes > mem.config.MaxTxsBytes {
+		return mempool.ErrMempoolIsFull{
+			NumTxs:      memSize,
+			MaxTxs:      mem.config.Size,
+			TxsBytes:    txsBytes,
+			MaxTxsBytes: mem.config.MaxTxsBytes,
+		}
+	}
+
+	// Note: always allow to append new tx
+	// if memSize >= mem.config.Size {
+	// 	return mempool.ErrMempoolIsFull{
+	// 		NumTxs:      memSize,
+	// 		MaxTxs:      mem.config.Size,
+	// 		TxsBytes:    txsBytes,
+	// 		MaxTxsBytes: mem.config.MaxTxsBytes,
+	// 	}
+	// }
 
 	if mem.preCheck != nil {
 		if err := mem.preCheck(tx); err != nil {
@@ -274,6 +304,7 @@ func (mem *CListMempool) CheckTx(
 
 	reqRes := mem.proxyAppConn.CheckTxAsync(abci.RequestCheckTx{Tx: tx}) // NOTE: app mempool insert
 	// Note: execute 'mem.reqResCb(tx, txInfo.SenderID, txInfo.SenderP2PID, cb)' immediately
+	// mem.logger.Info("Debug>> mempool status: CheckTx", "txSize", memSize, "txBytes", txsBytes, "gid", getGoroutineID())
 	reqRes.SetCallback(mem.reqResCb(tx, txInfo.SenderID, txInfo.SenderP2PID, cb))
 
 	return nil
@@ -360,7 +391,7 @@ func (mem *CListMempool) removeTx(tx types.Tx, elem *clist.CElement, removeFromC
 		mem.cache.Remove(tx)
 	}
 
-	mem.removed.Add(memTx)
+	mem.pending.Remove(memTx)
 }
 
 // RemoveTxByKey removes a transaction from the mempool by its TxKey index.
@@ -403,6 +434,7 @@ func (mem *CListMempool) resCbFirstTime(
 	peerP2PID p2p.ID,
 	res *abci.Response,
 ) {
+	// mem.logger.Info("Debug>> mempool status: resCbFirstTime", "txSize", mem.Size(), "txBytes", mem.SizeBytes(), "gid", getGoroutineID())
 	switch r := res.Value.(type) {
 	case *abci.Response_CheckTx:
 		var postCheckErr error
@@ -410,6 +442,36 @@ func (mem *CListMempool) resCbFirstTime(
 			postCheckErr = mem.postCheck(tx, r.CheckTx)
 		}
 		if (r.CheckTx.Code == abci.CodeTypeOK) && postCheckErr == nil {
+			// Check mempool isn't full again to reduce the chance of exceeding the
+			// limits.
+			memSize := mem.Size()
+			txsBytes := mem.SizeBytes()
+			recheckFull := mem.recheckFull.Load()
+
+			if recheckFull {
+				// remove from cache (mempool might have a space later)
+				mem.cache.Remove(tx)
+				mem.logger.Error(mempool.ErrMempoolIsFull{
+					NumTxs:      memSize,
+					MaxTxs:      mem.config.Size,
+					TxsBytes:    txsBytes,
+					MaxTxsBytes: mem.config.MaxTxsBytes,
+				}.Error())
+				return
+			}
+
+			if int64(len(tx))+txsBytes > mem.config.MaxTxsBytes {
+				// remove from cache (mempool might have a space later)
+				mem.cache.Remove(tx)
+				mem.logger.Error(mempool.ErrMempoolIsFull{
+					NumTxs:      memSize,
+					MaxTxs:      mem.config.Size,
+					TxsBytes:    txsBytes,
+					MaxTxsBytes: mem.config.MaxTxsBytes,
+				}.Error())
+				return
+			}
+
 			// Check transaction not already in the mempool
 			if e, ok := mem.txsMap.Load(types.Tx(tx).Key()); ok {
 				memTx := e.(*clist.CElement).Value.(*mempoolTx)
@@ -474,36 +536,33 @@ func (mem *CListMempool) resCbFirstTime(
 }
 
 func (mem *CListMempool) tryToAppnedTx(memTx *mempoolTx) error {
-	mem.updateMtx.RLock()
-	defer mem.updateMtx.RUnlock()
+	mem.pending.CleanUp(memTx.signerAddress)
+	// lastNonce, err := mem.pending.GetLastNonce(memTx.signerAddress)
+	// if err != nil {
+	// 	mem.logger.Error("failed to get last nonce", "err", err.Error())
+	// 	return err
+	// }
 
-	lastNonce, err := mem.pending.GetLastNonce(memTx.signerAddress)
-	if err != nil {
-		return err
-	}
-
-	if lastNonce > 0 {
-		if memTx.nonce != lastNonce+1 {
-			return fmt.Errorf("invalid nonce; got %d, expected %d", memTx.nonce, lastNonce+1)
-		}
-	}
+	// if lastNonce > 0 {
+	// 	if memTx.nonce != lastNonce+1 {
+	// 		return fmt.Errorf("invalid nonce; got %d, expected %d", memTx.nonce, lastNonce+1)
+	// 	}
+	// }
 
 	mem.addTx(memTx)
 
 	// find and drop, if mempool is full
-	if err := mem.isFull(0); err != nil {
-		if mem.Size() > mem.config.Size {
-			mem.markRemovableTxs()
-		}
+	if mem.Size() > mem.config.Size {
+		mem.markRemovableTxs()
+	}
 
-		if memTx.removed {
-			// new add memTx marked as removed, it means add failed, return error with reason "mempool is full"
-			// remove from cache (mempool might have a space later)
-			if e, ok := mem.txsMap.Load(memTx.tx.Key()); ok {
-				mem.removeTx(memTx.tx, e.(*clist.CElement), true)
-			}
-			return err
+	if memTx.removed {
+		// new add memTx marked as removed, it means add failed, return error with reason "mempool is full"
+		// remove from cache (mempool might have a space later)
+		if e, ok := mem.txsMap.Load(memTx.tx.Key()); ok {
+			mem.removeTx(memTx.tx, e.(*clist.CElement), true)
 		}
+		return fmt.Errorf("gas price is too low")
 	}
 
 	return nil
@@ -917,6 +976,12 @@ func (rp *removedPool) Add(tx *mempoolTx) {
 	}
 }
 
+func (rp *removedPool) Flush() {
+	rp.lock.Lock()
+	defer rp.lock.Unlock()
+	rp.data = nil
+}
+
 // --------------------------------------------------------------------------------
 type pendingPool struct {
 	lock sync.RWMutex
@@ -958,6 +1023,21 @@ func (pp *pendingPool) Add(tx *mempoolTx) {
 	}
 }
 
+func (pp *pendingPool) Remove(tx *mempoolTx) {
+	pp.lock.Lock()
+	defer pp.lock.Unlock()
+
+	sender := tx.signerAddress
+	if _, exists := pp.data[sender]; exists {
+		for i := range pp.data[sender] {
+			if pp.data[sender][i] == tx {
+				pp.data[sender] = append(pp.data[sender][:i], pp.data[sender][i+1:]...)
+				break
+			}
+		}
+	}
+}
+
 func (pp *pendingPool) CleanUp(sender string) {
 	pp.lock.Lock()
 	defer pp.lock.Unlock()
@@ -978,30 +1058,27 @@ func (pp *pendingPool) CleanUp(sender string) {
 	}
 }
 
-func (pp *pendingPool) CanAppend(sender string) bool {
-	pp.lock.RLock()
-	defer pp.lock.RUnlock()
+// func (pp *pendingPool) GetLastNonce(sender string) (uint64, error) {
+// 	pp.lock.RLock()
+// 	defer pp.lock.RUnlock()
 
-	if _, exists := pp.data[sender]; exists {
-		return !pp.data[sender][len(pp.data[sender])-1].removed
-	}
+// 	if _, exists := pp.data[sender]; exists {
+// 		if len(pp.data[sender]) > 0 {
+// 			for i := len(pp.data[sender]) - 1; i >= 0; i-- {
+// 				if !pp.data[sender][i].removed {
+// 					return pp.data[sender][i].nonce, nil
+// 				}
+// 			}
+// 			return 0, errors.New("invalid nonce")
+// 		}
+// 	}
+// 	return 0, nil
+// }
 
-	return true
-}
-
-func (pp *pendingPool) GetLastNonce(sender string) (uint64, error) {
-	pp.lock.RLock()
-	defer pp.lock.RUnlock()
-
-	if _, exists := pp.data[sender]; exists {
-		for i := len(pp.data[sender]) - 1; i >= 0; i-- {
-			if !pp.data[sender][i].removed {
-				return pp.data[sender][i].nonce, nil
-			}
-		}
-		return 0, errors.New("invalid nonce")
-	}
-	return 0, nil
+func (pp *pendingPool) Flush() {
+	pp.lock.Lock()
+	defer pp.lock.Unlock()
+	pp.data = nil
 }
 
 func getGoroutineID() int {
