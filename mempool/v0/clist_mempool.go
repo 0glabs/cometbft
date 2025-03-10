@@ -437,7 +437,7 @@ func (mem *CListMempool) resCbFirstTime(
 					removedTx := e.(*clist.CElement).Value.(*mempoolTx)
 					if removedTx != nil {
 						mem.removeTx(removedTx.tx, e.(*clist.CElement), true)
-						mem.logger.Info(
+						mem.logger.Debug(
 							"transaction already replaced",
 							"newTx", genTxHash(tx),
 							"oldTx", genTxHash(removedTx.tx),
