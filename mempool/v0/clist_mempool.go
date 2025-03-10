@@ -2,6 +2,8 @@ package v0
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"sync"
 	"sync/atomic"
@@ -428,6 +430,22 @@ func (mem *CListMempool) resCbFirstTime(
 			}
 			memTx.senders.Store(peerID, true)
 
+			if len(r.CheckTx.ReplacedTx) > 0 {
+				if e, ok := mem.txsMap.Load(types.Tx(r.CheckTx.ReplacedTx).Key()); ok {
+					removedTx := e.(*clist.CElement).Value.(*mempoolTx)
+					if removedTx != nil {
+						mem.removeTx(removedTx.tx, e.(*clist.CElement), true)
+						mem.logger.Info(
+							"transaction already replaced",
+							"newTx", genTxHash(tx),
+							"oldTx", genTxHash(removedTx.tx),
+							"height", mem.height,
+							"total", mem.Size(),
+						)
+					}
+				}
+			}
+
 			mem.addTx(memTx)
 			mem.logger.Debug(
 				"added good transaction",
@@ -719,4 +737,9 @@ type mempoolTx struct {
 // Height returns the height for this transaction
 func (memTx *mempoolTx) Height() int64 {
 	return atomic.LoadInt64(&memTx.height)
+}
+
+func genTxHash(tx types.Tx) string {
+	hash := sha256.Sum256(tx)
+	return hex.EncodeToString(hash[:])
 }
