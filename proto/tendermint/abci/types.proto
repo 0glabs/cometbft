@@ -243,6 +243,7 @@ message ResponseCheckTx {
   uint64 gas_limit      = 22;
   uint64 gas_price      = 23;
   int32  type           = 24;  
+  bytes  replacedTx     = 25;
 }
 
 message ResponseDeliverTx {
