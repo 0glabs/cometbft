@@ -2128,7 +2128,7 @@ type ResponseCheckTx struct {
 	// ABCI applictions creating a ResponseCheckTX should not set mempool_error.
 	MempoolError string `protobuf:"bytes,11,opt,name=mempool_error,json=mempoolError,proto3" json:"mempool_error,omitempty"`
 	// tx info
-	SignerAddress string `protobuf:"bytes,20,opt,name=signer_address,proto3" json:"signer_address,omitempty"`
+	SignerAddress string `protobuf:"bytes,20,opt,name=signer_address,json=signerAddress,proto3" json:"signer_address,omitempty"`
 	Nonce         uint64 `protobuf:"varint,21,opt,name=nonce,proto3" json:"nonce,omitempty"`
 	GasLimit      uint64 `protobuf:"varint,22,opt,name=gas_limit,json=gasLimit,proto3" json:"gas_limit,omitempty"`
 	GasPrice      uint64 `protobuf:"varint,23,opt,name=gas_price,json=gasPrice,proto3" json:"gas_price,omitempty"`
@@ -4245,6 +4245,7 @@ func _ABCIApplication_ProcessProposal_Handler(srv interface{}, ctx context.Conte
 	return interceptor(ctx, in, info, handler)
 }
 
+var ABCIApplication_serviceDesc = _ABCIApplication_serviceDesc
 var _ABCIApplication_serviceDesc = grpc.ServiceDesc{
 	ServiceName: "tendermint.abci.ABCIApplication",
 	HandlerType: (*ABCIApplicationServer)(nil),
