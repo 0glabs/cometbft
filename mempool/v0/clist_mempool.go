@@ -2,6 +2,8 @@ package v0
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"sync"
 	"sync/atomic"
@@ -362,7 +364,9 @@ func (mem *CListMempool) isFull(txSize int) error {
 	txsBytes := mem.SizeBytes()
 	recheckFull := mem.recheckFull.Load()
 
-	if memSize >= mem.config.Size || int64(txSize)+txsBytes > mem.config.MaxTxsBytes || recheckFull {
+	_ = txSize
+	// if memSize >= mem.config.Size || int64(txSize)+txsBytes > mem.config.MaxTxsBytes || recheckFull {
+	if recheckFull {
 		return mempool.ErrMempoolIsFull{
 			NumTxs:      memSize,
 			MaxTxs:      mem.config.Size,
@@ -414,12 +418,36 @@ func (mem *CListMempool) resCbFirstTime(
 				return
 			}
 
+			// make new mempoolTx
 			memTx := &mempoolTx{
 				height:    mem.height,
 				gasWanted: r.CheckTx.GasWanted,
 				tx:        tx,
+
+				signerAddress: r.CheckTx.SignerAddress,
+				nonce:         r.CheckTx.Nonce,
+				gasPrice:      r.CheckTx.GasPrice,
+				gasLimit:      r.CheckTx.GasLimit,
+				txType:        r.CheckTx.Type,
 			}
 			memTx.senders.Store(peerID, true)
+
+			if len(r.CheckTx.ReplacedTx) > 0 {
+				if e, ok := mem.txsMap.Load(types.Tx(r.CheckTx.ReplacedTx).Key()); ok {
+					removedTx := e.(*clist.CElement).Value.(*mempoolTx)
+					if removedTx != nil {
+						mem.removeTx(removedTx.tx, e.(*clist.CElement), true)
+						mem.logger.Debug(
+							"transaction already replaced",
+							"newTx", genTxHash(tx),
+							"oldTx", genTxHash(removedTx.tx),
+							"height", mem.height,
+							"total", mem.Size(),
+						)
+					}
+				}
+			}
+
 			mem.addTx(memTx)
 			mem.logger.Debug(
 				"added good transaction",
@@ -699,9 +727,21 @@ type mempoolTx struct {
 	// ids of peers who've sent us this tx (as a map for quick lookups).
 	// senders: PeerID -> bool
 	senders sync.Map
+
+	// additonal data of tx
+	signerAddress string
+	nonce         uint64
+	txType        int32
+	gasPrice      uint64
+	gasLimit      uint64
 }
 
 // Height returns the height for this transaction
 func (memTx *mempoolTx) Height() int64 {
 	return atomic.LoadInt64(&memTx.height)
+}
+
+func genTxHash(tx types.Tx) string {
+	hash := sha256.Sum256(tx)
+	return hex.EncodeToString(hash[:])
 }
