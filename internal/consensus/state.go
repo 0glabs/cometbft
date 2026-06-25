@@ -2672,7 +2672,7 @@ func (cs *State) signVote(
 		Round:            cs.Round,
 		Type:             msgType,
 		BlockID:          types.BlockID{Hash: hash, PartSetHeader: header},
-		Timestamp:        time.Time{},
+		Timestamp:        time.Now(),
 	}
 
 	extEnabled := cs.isVoteExtensionsEnabled(vote.Height)
