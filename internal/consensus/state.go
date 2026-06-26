@@ -2670,9 +2670,9 @@ func (cs *State) signVote(
 		ValidatorIndex:   valIdx,
 		Height:           cs.Height,
 		Round:            cs.Round,
+		Timestamp:        cmttime.Now(),
 		Type:             msgType,
 		BlockID:          types.BlockID{Hash: hash, PartSetHeader: header},
-		Timestamp:        time.Time{},
 	}
 
 	extEnabled := cs.isVoteExtensionsEnabled(vote.Height)
