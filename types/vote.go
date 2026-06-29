@@ -105,7 +105,7 @@ func VoteFromProto(pv *cmtproto.Vote) (*Vote, error) {
 		Signature:          pv.Signature,
 		Extension:          pv.Extension,
 		ExtensionSignature: pv.ExtensionSignature,
-		Timestamp:          time.Time{},
+		Timestamp:          pv.Timestamp,
 	}, nil
 }
 
@@ -467,10 +467,6 @@ func SignAndCheckVote(
 		}
 
 		vote.ExtensionSignature = v.ExtensionSignature
-	}
-
-	if !v.Timestamp.Equal(time.Time{}) {
-		return false, &ErrVoteTimestampNotZero{Timestamp: v.Timestamp}
 	}
 
 	return true, nil
